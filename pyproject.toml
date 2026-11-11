@@ -1,13 +1,36 @@
 [build-system]
-requires = ["setuptools>=61.0"]
+# 77 is the first setuptools that understands the SPDX "license" field below.
+requires = ["setuptools>=77.0"]
 build-backend = "setuptools.build_meta"
 
 [project]
+# The project is called GridStudio; the distribution and import name stay
+# ``powergrid_synth`` so existing code keeps working.
 name = "powergrid_synth"
-version = "0.1.1"
-description = "Synthetic power grid generator based on Chung-Lu-Chain model and MATPOWER SynGrid for the transmission grid system. The distribution grid synthesization is under development. This package is maintained by the AI Energy Lab at TU Delft." 
+dynamic = ["version"]
+description = "GridStudio: synthetic transmission and distribution power grids with realistic topology, generation, load and line parameters, exportable to standard power-system formats."
 readme = "README.md"
+license = "Apache-2.0"
+license-files = ["LICENSE"]
 requires-python = ">=3.10"
+keywords = [
+    "power grid",
+    "power systems",
+    "synthetic data",
+    "graph generation",
+    "power flow",
+    "transmission",
+    "distribution",
+]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Science/Research",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Scientific/Engineering",
+]
 dependencies = [
     "numpy>=2.2",
     "networkx>=3.4",
@@ -16,34 +39,41 @@ dependencies = [
     "pandas>=2.3,<3",
 ]
 
-
-[tool.setuptools.packages.find]
-where = ["."] 
-include = ["powergrid_synth*"] 
-exclude = ["demos*", "tests*"] 
-
 [project.optional-dependencies]
+# Needed for synthesize(), synthesize_distribution() in reference mode,
+# format converters, exporters and the pandapower / pypowsybl power flows.
 export = [
     "pandapower>=3.3,<4",
     "numba>=0.61.2",
     "lightsim2grid",
     "pypowsybl>=1.14,<2",
     "pypowsybl-jupyter>=1.0",
+    # pandapower needs these two for Excel export / import
+    "xlsxwriter",
+    "openpyxl",
 ]
-full = [
-    "pandapower>=3.3,<4",
-    "numba>=0.61.2",
-    "lightsim2grid",
-    "pypowsybl>=1.14,<2",
-    "pypowsybl-jupyter>=1.0",
-]
+# Alias of ``export``, kept for compatibility.
+full = ["powergrid_synth[export]"]
 dev = [
     "pytest",
     "pytest-cov",
-    "build"
+    "build",
 ]
 
 [project.urls]
-"Homepage" = "https://github.com/TU-Delft-AI-Energy-Lab/grid-synthesizer"
-"Documentation" = "https://power-grid-synthesizer.readthedocs.io/en/latest/"
-"Bug Tracker" = "https://github.com/TU-Delft-AI-Energy-Lab/grid-synthesizer/issues"
+Homepage = "https://github.com/mshyang/GridStudio"
+Documentation = "https://power-grid-synthesizer.readthedocs.io/en/latest/"
+Repository = "https://github.com/mshyang/GridStudio"
+Issues = "https://github.com/mshyang/GridStudio/issues"
+Changelog = "https://github.com/mshyang/GridStudio/blob/main/CHANGELOG.md"
+
+[tool.setuptools.dynamic]
+version = { attr = "powergrid_synth.__version__" }
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["powergrid_synth*"]
+exclude = ["demos*", "tests*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
