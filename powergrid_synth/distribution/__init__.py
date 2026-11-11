@@ -18,7 +18,7 @@ from .distribution_params import (
     ExponentialClip,
     CurrentThreshold,
 )
-from .distribution_synthesis import SchweetzerFeederGenerator
+from .distribution_synthesis import SchweitzerFeederGenerator, SchweetzerFeederGenerator
 from .distribution_validation import (
     compare_feeders,
     compute_emergent_properties,
@@ -47,7 +47,8 @@ __all__ = [
     "ExponentialClip",
     "CurrentThreshold",
     # Synthesis
-    "SchweetzerFeederGenerator",
+    "SchweitzerFeederGenerator",
+    "SchweetzerFeederGenerator",  # deprecated misspelling, kept for compatibility
     # Validation
     "compare_feeders",
     "compute_emergent_properties",

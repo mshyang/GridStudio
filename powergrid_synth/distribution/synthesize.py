@@ -20,7 +20,7 @@ Two operation modes are supported:
 
 Example — Mode I (reference-based, pandapower)::
 
-    from powergrid_synth.distribution.synthesize import synthesize_distribution
+    from powergrid_synth import synthesize_distribution
 
     feeders = synthesize_distribution(
         mode="reference",
@@ -58,11 +58,14 @@ Example — Mode II (default parameters)::
 
 from __future__ import annotations
 
+from .._extras import EXPORT_INSTALL_HINT
 import os
 from typing import Dict, List, Optional, Sequence, Union
 
 import networkx as nx
 
+from ..core._logging import logger, verbosity
+from ..core.grid_graph import DistributionGrid
 from .distribution_analysis import fit_params_from_feeders
 from .distribution_converter import (
     feeder_summary,
@@ -70,7 +73,7 @@ from .distribution_converter import (
     pypowsybl_to_feeders,
 )
 from .distribution_params import DistributionSynthParams
-from .distribution_synthesis import SchweetzerFeederGenerator
+from .distribution_synthesis import SchweitzerFeederGenerator
 from .distribution_validation import (
     compare_feeders,
     compute_emergent_properties,
@@ -81,6 +84,8 @@ from .distribution_validation import (
 # ---------------------------------------------------------------------------
 # pandapower built-in distribution cases
 # ---------------------------------------------------------------------------
+
+_EXPORT_FORMATS = ("json", "excel", "sqlite", "pickle")
 
 _PP_DISTRIBUTION_CASES = {
     "cigre_lv": "create_cigre_network_lv",
@@ -95,7 +100,7 @@ def _get_pandapower_dist_case(name: str):
     except ImportError as exc:
         raise ImportError(
             "synthesize_distribution() in reference mode requires "
-            "pandapower.  Install it with: pip install pandapower"
+            f"pandapower. Install it with: {EXPORT_INSTALL_HINT}"
         ) from exc
 
     factory_name = _PP_DISTRIBUTION_CASES.get(name)
@@ -131,12 +136,14 @@ def synthesize_distribution(
     v_nom_kv: float = 10.0,
     assign_cable_types: bool = True,
     assign_cable_lengths: bool = True,
+    match_totals: bool = True,
     # --- Common parameters ---
     seed: Optional[int] = None,
     output_dir: Optional[str] = None,
     output_name: str = "synthetic_feeder",
-    export_formats: Sequence[str] = ("json",),
-) -> List[nx.Graph]:
+    export_formats: Optional[Sequence[str]] = ("json",),
+    verbose: bool = True,
+) -> List[DistributionGrid]:
     """Run the full Schweitzer distribution synthesis pipeline.
 
     Parameters
@@ -179,27 +186,88 @@ def synthesize_distribution(
         Run Step 4 — cable type assignment (default True).
     assign_cable_lengths : bool
         Run Step 5 — cable length / impedance assignment (default True).
+    match_totals : bool
+        Rescale the sampled per-node shares so each feeder's load and
+        generation add up to exactly *total_load_mw* / *total_gen_mw*
+        (default True).  See
+        :meth:`SchweitzerFeederGenerator.generate_feeder`.
 
     seed : int, optional
         Random seed for reproducibility.
     output_dir : str, optional
-        If given, export feeders to this directory.
+        If given, export feeders to this directory.  Nothing is written
+        when it is ``None`` (default).
     output_name : str
         Base filename (without extension) for exported files.
     export_formats : sequence of str
         Export formats when *output_dir* is set.  Supported:
         ``"json"``, ``"excel"``, ``"sqlite"``, ``"pickle"``.
+    verbose : bool
+        If ``True`` (default), print one progress line per stage.
+        ``False`` prints warnings only.  For finer control see
+        :func:`powergrid_synth.set_verbosity`.
 
     Returns
     -------
-    list[nx.Graph]
-        Generated synthetic feeders as annotated NetworkX graphs.
+    list[DistributionGrid]
+        Generated synthetic feeders, each a
+        :class:`~powergrid_synth.core.grid_graph.DistributionGrid`
+        (a :class:`networkx.Graph` subclass).  Nodes carry ``h`` (hop
+        distance from the source), ``node_type`` (``'load'`` /
+        ``'injection'`` / ``'intermediate'``), ``P_mw``, ``Q_mvar``
+        (negative for generation) and ``pf``.  Edges carry
+        ``cable_type``, ``length_km``, ``r_ohm``, ``x_ohm`` and
+        ``max_i_ka``.
 
     Raises
     ------
     ValueError
-        If *mode* is invalid or required arguments are missing.
+        If *mode* is invalid, required arguments are missing, or
+        *export_formats* contains an unknown format name.
     """
+    with verbosity(logger.level if verbose else "warning"):
+        return _synthesize_distribution(
+            mode=mode,
+            reference_case=reference_case,
+            reference_net=reference_net,
+            reference_file=reference_file,
+            params=params,
+            n_feeders=n_feeders,
+            n_nodes=n_nodes,
+            total_load_mw=total_load_mw,
+            total_gen_mw=total_gen_mw,
+            v_nom_kv=v_nom_kv,
+            assign_cable_types=assign_cable_types,
+            assign_cable_lengths=assign_cable_lengths,
+            match_totals=match_totals,
+            seed=seed,
+            output_dir=output_dir,
+            output_name=output_name,
+            export_formats=export_formats,
+        )
+
+
+def _synthesize_distribution(
+    *,
+    mode,
+    reference_case,
+    reference_net,
+    reference_file,
+    params,
+    n_feeders,
+    n_nodes,
+    total_load_mw,
+    total_gen_mw,
+    v_nom_kv,
+    assign_cable_types,
+    assign_cable_lengths,
+    match_totals,
+    seed,
+    output_dir,
+    output_name,
+    export_formats,
+) -> List[DistributionGrid]:
+    """Implementation of :func:`synthesize_distribution`."""
     # ------------------------------------------------------------------
     # 0. Validate inputs
     # ------------------------------------------------------------------
@@ -220,6 +288,23 @@ def synthesize_distribution(
                 "reference_file, or reference_case."
             )
 
+    if n_feeders < 1:
+        raise ValueError(f"n_feeders must be at least 1, got {n_feeders}.")
+
+    # Check the export formats now rather than after generation.
+    if isinstance(export_formats, str):
+        export_formats = [export_formats]
+    export_formats = [f.lower().strip() for f in (export_formats or [])]
+    unknown = [f for f in export_formats if f not in _EXPORT_FORMATS]
+    if unknown and output_dir is not None:
+        raise ValueError(
+            f"Unknown export format(s) {unknown} for distribution feeders. "
+            f"Available: {list(_EXPORT_FORMATS)}."
+        )
+    if output_dir is not None and export_formats:
+        from ..core.data_format_converter import _require_pandapower
+        _require_pandapower()
+
     # ------------------------------------------------------------------
     # 1. Obtain synthesis parameters
     # ------------------------------------------------------------------
@@ -234,19 +319,19 @@ def synthesize_distribution(
         summary = feeder_summary(ref_feeders)
         n_ref = len(ref_feeders)
         avg_nodes = sum(s["n_nodes"] for s in summary) / n_ref if n_ref else 0
-        print(
+        logger.info(
             f"[1] Loaded {n_ref} reference feeder(s): "
             f"avg {avg_nodes:.0f} nodes."
         )
     else:
         fitted_params = params if params is not None else DistributionSynthParams()
-        print("[1] Using default / user-supplied parameters.")
+        logger.info("[1] Using default / user-supplied parameters.")
 
     # ------------------------------------------------------------------
     # 2. Generate synthetic feeders
     # ------------------------------------------------------------------
-    gen = SchweetzerFeederGenerator(params=fitted_params, seed=seed)
-    synthetic_feeders: List[nx.Graph] = []
+    gen = SchweitzerFeederGenerator(params=fitted_params, seed=seed)
+    synthetic_feeders: List[DistributionGrid] = []
 
     for i in range(n_feeders):
         feeder = gen.generate_feeder(
@@ -256,6 +341,7 @@ def synthesize_distribution(
             v_nom_kv=v_nom_kv,
             assign_cable_types=assign_cable_types,
             assign_cable_lengths=assign_cable_lengths,
+            match_totals=match_totals,
         )
         synthetic_feeders.append(feeder)
 
@@ -265,7 +351,7 @@ def synthesize_distribution(
         if n_feeders
         else 0
     )
-    print(
+    logger.info(
         f"[2] Generated {n_feeders} synthetic feeder(s): "
         f"avg {avg_syn_nodes:.0f} nodes, "
         f"{n_nodes} requested."
@@ -277,15 +363,15 @@ def synthesize_distribution(
     for i, feeder in enumerate(synthetic_feeders):
         issues = validate_tree(feeder)
         if issues:
-            print(f"  [!] Feeder {i}: {issues}")
+            logger.warning(f"  [!] Feeder {i}: {issues}")
 
     if ref_feeders and len(ref_feeders) > 0:
         kl = compare_feeders(synthetic_feeders[0], ref_feeders[0])
         parts = ", ".join(f"{k}={v:.3f}" for k, v in kl.items())
-        print(f"[3] KL divergence (feeder 0 vs ref 0): {parts}")
+        logger.info(f"[3] KL divergence (feeder 0 vs ref 0): {parts}")
     else:
         props = compute_emergent_properties(synthetic_feeders[0])
-        print(
+        logger.info(
             f"[3] Feeder 0 properties: "
             f"{props['n_nodes']} nodes, "
             f"{props['n_edges']} edges, "
@@ -296,7 +382,7 @@ def synthesize_distribution(
     # ------------------------------------------------------------------
     # 4. Export (optional)
     # ------------------------------------------------------------------
-    if output_dir is not None:
+    if output_dir is not None and export_formats:
         os.makedirs(output_dir, exist_ok=True)
         _export_feeders(
             synthetic_feeders,
@@ -304,9 +390,9 @@ def synthesize_distribution(
             output_name=output_name,
             export_formats=export_formats,
         )
-        print(f"[4] Exported to {output_dir}/")
+        logger.info(f"[4] Exported to {output_dir}{os.sep}")
 
-    print("[Done]")
+    logger.info("Done.")
     return synthetic_feeders
 
 
@@ -337,8 +423,8 @@ def _load_reference_feeders(
             import pypowsybl as pp
         except ImportError as exc:
             raise ImportError(
-                "Loading from file requires pypowsybl.  "
-                "Install it with: pip install pypowsybl"
+                "Loading from file requires pypowsybl. "
+                f"Install it with: {EXPORT_INSTALL_HINT}"
             ) from exc
         net = pp.network.load(reference_file)
         return pypowsybl_to_feeders(net)
@@ -357,8 +443,8 @@ def _load_reference_feeders(
             import pypowsybl as pp
         except ImportError as exc:
             raise ImportError(
-                "Loading from file requires pypowsybl.  "
-                "Install it with: pip install pypowsybl"
+                "Loading from file requires pypowsybl. "
+                f"Install it with: {EXPORT_INSTALL_HINT}"
             ) from exc
         net = pp.network.load(reference_case)
         return pypowsybl_to_feeders(net)
@@ -397,8 +483,3 @@ def _export_feeders(
                 exporter.to_sqlite(filepath + ".sqlite")
             elif fmt_lower == "pickle":
                 exporter.to_pickle(filepath + ".p")
-            else:
-                print(
-                    f"  [!] Unknown format {fmt!r} for distribution, "
-                    f"skipping. Available: json, excel, sqlite, pickle"
-                )

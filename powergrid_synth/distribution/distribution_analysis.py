@@ -267,7 +267,7 @@ def fit_params_from_feeders(
     Returns
     -------
     DistributionSynthParams
-        Fitted parameter set ready for ``SchweetzerFeederGenerator``.
+        Fitted parameter set ready for ``SchweitzerFeederGenerator``.
     """
     hops = _hop_distances(feeders)
     degs = _degrees(feeders)

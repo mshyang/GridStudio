@@ -33,6 +33,7 @@ Example
 import numpy as np
 from typing import List, Dict, Tuple, Optional, Any
 from .deg_dist_optimizer import DegreeDistributionOptimizer
+from ..core._logging import logger
 
 class InputConfigurator:
     r"""
@@ -266,7 +267,7 @@ class InputConfigurator:
             dist_type = lvl_cfg.get('dist_type', 'poisson')
             max_k = lvl_cfg.get('max_k', min(n - 1, 50))
 
-            print(f"Generating Level {i}: {dist_type.upper()} distribution (Avg={avg_k})")
+            logger.debug(f"Generating Level {i}: {dist_type.upper()} distribution (Avg={avg_k})")
 
             if dist_type == 'poisson':
                 deg_seq = self._generate_poisson_degrees(n, avg_k)
@@ -288,14 +289,13 @@ class InputConfigurator:
             conn_type = cfg.get('type', 'simple')
             
             if conn_type == 'k-stars':
-                print(f"Generating Transformers {i}<->{j}: k-Stars Model")
+                logger.debug(f"Generating Transformers {i}<->{j}: k-Stars Model")
                 c_val = cfg.get('c', 0.174)
                 gamma_val = cfg.get('gamma', 4.15)
-                print(gamma_val)
                 t_i, t_j = self._generate_transformer_stars(n_i, n_j, c_val, gamma_val)
             else:
                 # Simple probabilistic model
-                print(f"Generating Transformers {i}<->{j}: Simple Probabilistic")
+                logger.debug(f"Generating Transformers {i}<->{j}: Simple Probabilistic")
                 p_i = cfg.get('p_i_j', 0.0)
                 p_j = cfg.get('p_j_i', 0.0)
                 t_i = self._generate_transformer_simple(n_i, p_i)

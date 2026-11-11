@@ -3,6 +3,8 @@ import networkx as nx
 import math
 from typing import List, Dict, Tuple, Optional
 from ..core.reference_data import get_reference_stats
+from ..core._logging import logger
+from ..core._graph_utils import require_node_attribute, store_node_attribute
 
 
 class LoadAllocator:
@@ -100,7 +102,7 @@ class LoadAllocator:
             stats = get_reference_stats(self.ref_sys_id)
             return stats['Tab_2D_load']
         except ValueError as e:
-            print(f"Warning: {e} Defaulting to Reference System 1.")
+            logger.warning(f"Warning: {e} Defaulting to Reference System 1.")
             stats = get_reference_stats(1)
             return stats['Tab_2D_load']
 
@@ -304,7 +306,7 @@ class LoadAllocator:
             
         return np.vstack(final_list)
 
-    def allocate(self, loading_level: str = 'H') -> Dict[int, float]:
+    def allocate(self, loading_level: str = 'H', update_graph: bool = True) -> Dict[int, float]:
         """
         Run the full load-allocation pipeline.
 
@@ -328,14 +330,34 @@ class LoadAllocator:
             - ``'L'`` — light (30–40% of generation capacity).
             - ``'M'`` — medium (50–60% of generation capacity).
             - ``'H'`` — heavy (70–80% of generation capacity).
+        update_graph : bool, optional
+            If ``True`` (default), store the result on the graph as the
+            ``'pl'`` node attribute of the load buses.
 
         Returns
         -------
         dict[int, float]
             Mapping from load node ID to its assigned active power load (MW).
+
+        Raises
+        ------
+        ValueError
+            If no node carries a ``'bus_type'`` attribute, i.e. bus types
+            have not been assigned yet.
         """
+        require_node_attribute(
+            self.graph, "bus_type",
+            needed_by="LoadAllocator",
+            set_by="BusTypeAllocator(graph).allocate()",
+        )
+        # Bus types may have been assigned after this object was created.
+        self.load_buses = [n for n, d in self.graph.nodes(data=True) if d.get('bus_type') == 'Load']
+        self.n_load = len(self.load_buses)
+
         if self.n_load == 0:
-            print("No load buses found. Skipping load allocation.")
+            logger.warning("No load buses found. Skipping load allocation.")
+            if update_graph:
+                store_node_attribute(self.graph, {}, "pl")
             return {}
 
         # 1. Get Total Generation Capacity from Grid
@@ -343,14 +365,14 @@ class LoadAllocator:
         total_gen_capacity = sum(gen_caps)
         
         if total_gen_capacity == 0 and loading_level != 'D':
-            print("Warning: Total generation capacity is 0. Switching to 'D' (Deterministic) loading.")
+            logger.warning("Warning: Total generation capacity is 0. Switching to 'D' (Deterministic) loading.")
             loading_level = 'D'
 
         # 2. Calculate Total Load
         total_load = self._calculate_total_load(loading_level, total_gen_capacity)
         
-        print(f"Allocating Loads for {self.n_load} load buses.")
-        print(f"Total System Load Target: {total_load:.2f} MW (Level: {loading_level})")
+        logger.debug(f"Allocating Loads for {self.n_load} load buses.")
+        logger.debug(f"Total System Load Target: {total_load:.2f} MW (Level: {loading_level})")
 
         # 3. Get Load Bus Degrees
         load_degrees = []
@@ -381,14 +403,18 @@ class LoadAllocator:
             norm_val = row[2]
             actual_val = norm_val * max_r_pl
             final_allocation[node_id] = actual_val
-            
+
+        if update_graph:
+            store_node_attribute(self.graph, final_allocation, "pl")
+
         return final_allocation
 
     def allocate_reactive(
         self,
-        active_loads: Dict[int, float],
+        active_loads: Optional[Dict[int, float]] = None,
         pf_min: float = 0.85,
         pf_max: float = 0.97,
+        update_graph: bool = True,
     ) -> Dict[int, float]:
         """
         Derive reactive power loads from active loads using power factors.
@@ -402,22 +428,40 @@ class LoadAllocator:
 
         Parameters
         ----------
-        active_loads : dict[int, float]
+        active_loads : dict[int, float], optional
             Mapping from load node ID to active power load (MW), as returned
-            by :meth:`allocate`.
+            by :meth:`allocate`.  If omitted, the ``'pl'`` node attributes
+            stored on the graph by :meth:`allocate` are used.
         pf_min : float, optional
             Minimum power factor (default 0.85).
         pf_max : float, optional
             Maximum power factor (default 0.97).
+        update_graph : bool, optional
+            If ``True`` (default), store the result on the graph as the
+            ``'ql'`` node attribute.
 
         Returns
         -------
         dict[int, float]
             Mapping from load node ID to reactive power load (Mvar).
         """
+        if active_loads is None:
+            require_node_attribute(
+                self.graph, "pl",
+                needed_by="LoadAllocator.allocate_reactive",
+                set_by="LoadAllocator(graph).allocate()",
+            )
+            active_loads = {
+                n: d["pl"] for n, d in self.graph.nodes(data=True) if "pl" in d
+            }
+
         reactive_loads = {}
         for node_id, pl in active_loads.items():
             pf = np.random.uniform(pf_min, pf_max)
             ql = pl * np.tan(np.arccos(pf))
             reactive_loads[node_id] = ql
+
+        if update_graph:
+            store_node_attribute(self.graph, reactive_loads, "ql")
+
         return reactive_loads

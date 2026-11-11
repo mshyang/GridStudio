@@ -9,11 +9,16 @@ Supported pandapower formats:
     - JSON, Excel, SQLite, Pickle
 
 Supported pypowsybl formats:
-    - CGMES, XIIDM, MATPOWER, PSS/E, UCTE, AMPL, BIIDM, JIIDM
+    - CGMES, XIIDM, MATPOWER, PSS/E, AMPL, BIIDM, JIIDM
+
+UCTE is not supported: pypowsybl's UCTE writer requires UCTE node codes,
+which synthetic grids do not have.
 """
 import os
 import networkx as nx
 from typing import Optional
+from ._logging import logger
+from .data_format_converter import _require_pandapower
 
 
 class GridExporter:
@@ -79,10 +84,10 @@ class GridExporter:
         Args:
             filepath: Destination file path (e.g. ``"output/grid.json"``).
         """
-        import pandapower as pp
+        pp = _require_pandapower()
         os.makedirs(os.path.dirname(os.path.abspath(filepath)), exist_ok=True)
         pp.to_json(self._get_pandapower_net(), filepath)
-        print(f"-> pandapower JSON export: {filepath}")
+        logger.info(f"-> pandapower JSON export: {filepath}")
 
     def to_excel(self, filepath: str, include_results: bool = True) -> None:
         """Export the grid to a pandapower Excel file.
@@ -91,11 +96,11 @@ class GridExporter:
             filepath: Destination file path (e.g. ``"output/grid.xlsx"``).
             include_results: Whether to include power flow results if available.
         """
-        import pandapower as pp
+        pp = _require_pandapower()
         os.makedirs(os.path.dirname(os.path.abspath(filepath)), exist_ok=True)
         pp.to_excel(self._get_pandapower_net(), filepath,
                      include_results=include_results)
-        print(f"-> pandapower Excel export: {filepath}")
+        logger.info(f"-> pandapower Excel export: {filepath}")
 
     def to_sqlite(self, filepath: str, include_results: bool = False) -> None:
         """Export the grid to a pandapower SQLite database.
@@ -104,11 +109,11 @@ class GridExporter:
             filepath: Destination file path (e.g. ``"output/grid.sqlite"``).
             include_results: Whether to include power flow results.
         """
-        import pandapower as pp
+        pp = _require_pandapower()
         os.makedirs(os.path.dirname(os.path.abspath(filepath)), exist_ok=True)
         pp.to_sqlite(self._get_pandapower_net(), filepath,
                       include_results=include_results)
-        print(f"-> pandapower SQLite export: {filepath}")
+        logger.info(f"-> pandapower SQLite export: {filepath}")
 
     def to_pickle(self, filepath: str) -> None:
         """Export the grid to a pandapower pickle file.
@@ -116,10 +121,10 @@ class GridExporter:
         Args:
             filepath: Destination file path (e.g. ``"output/grid.p"``).
         """
-        import pandapower as pp
+        pp = _require_pandapower()
         os.makedirs(os.path.dirname(os.path.abspath(filepath)), exist_ok=True)
         pp.to_pickle(self._get_pandapower_net(), filepath)
-        print(f"-> pandapower pickle export: {filepath}")
+        logger.info(f"-> pandapower pickle export: {filepath}")
 
     # ------------------------------------------------------------------
     # Pypowsybl exports
@@ -129,8 +134,8 @@ class GridExporter:
                       parameters: Optional[dict] = None) -> None:
         """Export the grid using pypowsybl's built-in save.
 
-        Supported formats: CGMES, XIIDM, MATPOWER, PSS/E, UCTE, AMPL,
-        BIIDM, JIIDM.
+        Supported formats: CGMES, XIIDM, MATPOWER, PSS/E, AMPL, BIIDM,
+        JIIDM.  (UCTE needs UCTE node codes and fails on synthetic grids.)
 
         Args:
             filepath: Destination path (file or directory depending on format).
@@ -142,7 +147,7 @@ class GridExporter:
             os.makedirs(parent, exist_ok=True)
         self._get_pypowsybl_net().save(filepath, format=format,
                                         parameters=parameters)
-        print(f"-> pypowsybl {format} export: {filepath}")
+        logger.info(f"-> pypowsybl {format} export: {filepath}")
 
     # ------------------------------------------------------------------
     # Convenience aliases

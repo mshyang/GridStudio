@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from .._extras import EXPORT_INSTALL_HINT
 import networkx as nx
 import pandas as pd
 import numpy as np
@@ -15,8 +16,8 @@ def _require_pandapower():
         import pandapower as pp
     except ImportError as exc:
         raise ImportError(
-            "pandapower is required for powergrid_synth.data_format_converter. "
-            "Install it with: pip install powergrid_synth[export]"
+            "pandapower is required to convert or export grids and to run power flow. "
+            f"Install it with: {EXPORT_INSTALL_HINT}"
         ) from exc
     return pp
 
@@ -27,7 +28,7 @@ def _require_pypowsybl():
     except ImportError as exc:
         raise ImportError(
             "pypowsybl is required for this function. "
-            "Install it with: pip install powergrid_synth[export]"
+            f"Install it with: {EXPORT_INSTALL_HINT}"
         ) from exc
     return ppl
 
@@ -123,6 +124,8 @@ def nx_to_pandapower(
         graph: The synthetic power grid (NetworkX Graph) containing electrical properties.
         base_mva: System base MVA for per-unit calculations.
         base_kv_map: Dictionary mapping voltage level indices (0, 1, 2) to actual kV (e.g., {0: 380.0, 1: 110.0}).
+            If omitted, ``graph.graph["base_kv_map"]`` is used when present (``synthesize()`` stores the
+            reference grid's voltages there), otherwise 380 / 110 / 20 / 0.4 / 0.12 kV for levels 0-4.
     """
     pp = _require_pandapower()
 
@@ -131,6 +134,8 @@ def nx_to_pandapower(
     net.sn_mva = base_mva
     
     # Default hierarchy if not specified: HV -> MV -> LV -> Residential
+    if base_kv_map is None:
+        base_kv_map = graph.graph.get("base_kv_map")
     if base_kv_map is None:
         base_kv_map = {0: 380.0, 1: 110.0, 2: 20.0, 3: 0.4, 4: 0.12}
         

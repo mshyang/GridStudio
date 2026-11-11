@@ -16,6 +16,8 @@ import networkx as nx
 import math
 from typing import List, Dict, Tuple, Optional
 from ..core.reference_data import get_reference_stats
+from ..core._logging import logger
+from ..core._graph_utils import require_node_attribute, store_node_attribute
 
 class CapacityAllocator:
     """
@@ -139,7 +141,7 @@ class CapacityAllocator:
             stats = get_reference_stats(self.ref_sys_id)
             return stats['Tab_2D_Pgmax']
         except ValueError as e:
-            print(f"Warning: {e} Defaulting to Reference System 1.")
+            logger.warning(f"Warning: {e} Defaulting to Reference System 1.")
             stats = get_reference_stats(1)
             return stats['Tab_2D_Pgmax']
 
@@ -348,7 +350,8 @@ class CapacityAllocator:
         gen_setting = np.vstack(final_list)
         return gen_setting
 
-    def allocate(self, tab_2d: Optional[np.ndarray] = None) -> Dict[int, float]:
+    def allocate(self, tab_2d: Optional[np.ndarray] = None,
+                 update_graph: bool = True) -> Dict[int, float]:
         """
         Run the full generation-capacity allocation pipeline.
 
@@ -368,15 +371,35 @@ class CapacityAllocator:
         tab_2d : np.ndarray or None, optional
             Custom 14x14 probability matrix.  If *None*, the default table
             for the selected ``ref_sys_id`` is used.
+        update_graph : bool, optional
+            If ``True`` (default), store the result on the graph as the
+            ``'pg_max'`` node attribute of the generator buses.
 
         Returns
         -------
         dict[int, float]
             Mapping from generator node ID to its assigned capacity
             ``Pg_max`` (MW).
+
+        Raises
+        ------
+        ValueError
+            If no node carries a ``'bus_type'`` attribute, i.e. bus types
+            have not been assigned yet.
         """
+        require_node_attribute(
+            self.graph, "bus_type",
+            needed_by="CapacityAllocator",
+            set_by="BusTypeAllocator(graph).allocate()",
+        )
+        # Bus types may have been assigned after this object was created.
+        self.gen_buses = [n for n, d in self.graph.nodes(data=True) if d.get('bus_type') == 'Gen']
+        self.n_gen = len(self.gen_buses)
+
         if self.n_gen == 0:
-            print("No generator buses found. Skipping capacity allocation.")
+            logger.warning("No generator buses found. Skipping capacity allocation.")
+            if update_graph:
+                store_node_attribute(self.graph, {}, "pg_max")
             return {}
 
         if tab_2d is None:
@@ -389,8 +412,8 @@ class CapacityAllocator:
         total_gen = 10**exponent
         
         ref_label = "Heuristic (Default)" if self.ref_sys_id == 0 else f"Reference System {self.ref_sys_id}"
-        print(f"Allocating Capacity for {self.n_gen} generators.")
-        print(f"Total System Capacity Target: {total_gen:.2f} MW using {ref_label}")
+        logger.debug(f"Allocating Capacity for {self.n_gen} generators.")
+        logger.debug(f"Total System Capacity Target: {total_gen:.2f} MW using {ref_label}")
 
         # 2. Get Node Degrees for Generators
         gen_degrees = []
@@ -420,5 +443,8 @@ class CapacityAllocator:
             norm_cap = row[2]
             actual_cap = norm_cap * max_r_pgmax
             final_allocation[node_id] = actual_cap
-            
+
+        if update_graph:
+            store_node_attribute(self.graph, final_allocation, "pg_max")
+
         return final_allocation

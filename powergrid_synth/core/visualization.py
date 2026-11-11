@@ -10,6 +10,7 @@ import matplotlib.lines as mlines
 import numpy as np
 from matplotlib.widgets import Button
 from typing import Dict, Any, Tuple, List, Optional
+from ._logging import logger
 
 class MatplotlibDropdown:
     """
@@ -375,7 +376,7 @@ class GridVisualizer:
         n_plots = len(levels)
         
         if n_plots == 0:
-            print("No voltage levels found in grid.")
+            logger.warning("No voltage levels found in grid.")
             return
 
         # Calculate grid dimensions (max 3 cols)
@@ -493,7 +494,7 @@ class GridVisualizer:
                               legend_loc='center left', legend_bbox=(1, 0.5), bbox_transform=None,
                               show_impedance: bool = False):
         """Helper to draw bus type visualization on a specific axis."""
-        print(f"Calculating layout '{layout_name}' for bus types...")
+        logger.debug(f"Calculating layout '{layout_name}' for bus types...")
         # 1. Calculate Layout
         if layout_name == 'kamada_kawai':
             pos = nx.kamada_kawai_layout(graph)
@@ -633,7 +634,7 @@ class GridVisualizer:
                           legend_loc='upper right', legend_bbox=None, bbox_transform=None,
                           show_impedance: bool = False):
         """Helper to draw graph on a specific axis."""
-        print(f"Calculating layout '{layout_name}'...")
+        logger.debug(f"Calculating layout '{layout_name}'...")
         if layout_name == 'kamada_kawai':
             pos = nx.kamada_kawai_layout(graph)
         elif layout_name == 'spring':
@@ -724,7 +725,7 @@ class GridVisualizer:
         """Opens an interactive window for a specific voltage level."""
         nodes = [n for n, d in graph.nodes(data=True) if d.get('voltage_level') == level]
         if not nodes:
-            print(f"No nodes found for voltage level {level}")
+            logger.warning(f"No nodes found for voltage level {level}")
             return
             
         subgraph = graph.subgraph(nodes)
