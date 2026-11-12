@@ -18,6 +18,7 @@ from .preprocessing import Preprocessor
 from .edge_creation import EdgeCreator
 from .transformer_edges import TransformerConnector
 from ..core.grid_graph import PowerGridGraph
+from ..core._logging import logger
 
 
 class PowerGridGenerator:
@@ -92,7 +93,7 @@ class PowerGridGenerator:
         """
         current_global_offset = 0
         for i in range(k):
-            print(f"Generating Level {i}...")
+            logger.debug(f"Generating Level {i}...")
             
             d_input = degrees_by_level[i]
             delta_input = diameters_by_level[i]
@@ -111,7 +112,7 @@ class PowerGridGenerator:
                 all_edges[edge] = {'type': 'line'}
                 
             current_global_offset += n_nodes
-            print(f"  -> Level {i} Complete. Nodes: {n_nodes}, Edges: {len(local_edges)}")
+            logger.debug(f"  -> Level {i} Complete. Nodes: {n_nodes}, Edges: {len(local_edges)}")
 
     def _generate_transformer_connections(self, k: int,
                                         transformer_degrees: Dict[Tuple[int, int], Tuple[List[int], List[int]]],
@@ -139,14 +140,14 @@ class PowerGridGenerator:
             *Mutated in place* — ``{(u, v): {'type': 'transformer'}}`` entries
             are added.
         """
-        print("Generating Transformer Connections...")
+        logger.debug("Generating Transformer Connections...")
         for i in range(k):
             for j in range(i + 1, k):
                 
                 if (i, j) not in transformer_degrees:
                     continue
                 
-                print(f"  -> Connecting Level {i} <-> Level {j}")
+                logger.debug(f"  -> Connecting Level {i} <-> Level {j}")
                 
                 t_i_j_input, t_j_i_input = transformer_degrees[(i, j)]
                 
@@ -214,7 +215,7 @@ class PowerGridGenerator:
         level_offsets = [0] * k
         level_node_counts = [0] * k
         
-        print(f"--- Starting Generation for {k} Voltage Levels ---")
+        logger.debug(f"--- Starting Generation for {k} Voltage Levels ---")
 
         # =========================================================
         # Lines 3-7: Create each same-voltage subgraph
@@ -245,7 +246,7 @@ class PowerGridGenerator:
         # =========================================================
         if keep_lcc:
             if G.number_of_nodes() > 0:
-                print("Filtering for Largest Connected Component (LCC)...")
+                logger.debug("Filtering for Largest Connected Component (LCC)...")
                 original_n = G.number_of_nodes()
                 largest_cc_nodes = max(nx.connected_components(G), key=len)
                 
@@ -262,8 +263,8 @@ class PowerGridGenerator:
                 G = nx.relabel_nodes(G_new, mapping)
                 
                 new_n = G.number_of_nodes()
-                print(f"  -> Kept {new_n} nodes (removed {original_n - new_n} isolated nodes)")
+                logger.debug(f"  -> Kept {new_n} nodes (removed {original_n - new_n} isolated nodes)")
             else:
-                print("Warning: Graph is empty, cannot filter for LCC.")
+                logger.warning("Warning: Graph is empty, cannot filter for LCC.")
         
         return G

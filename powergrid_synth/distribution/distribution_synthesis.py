@@ -9,25 +9,28 @@ Implements the five-step pipeline:
 4. **Cable type** — Exponential current-ratio sampling with cable library.
 5. **Cable length** — modified Cauchy distribution with hop-dependent clipping.
 
-Returns an annotated :class:`networkx.Graph`.
+Returns an annotated :class:`~powergrid_synth.core.grid_graph.DistributionGrid`
+(a :class:`networkx.Graph` subclass).
 """
 
 from __future__ import annotations
 
 import math
+import warnings
 from typing import Dict, List, Optional, Tuple
 
 import networkx as nx
 import numpy as np
 from scipy import stats
 
+from ..core.grid_graph import DistributionGrid
 from .distribution_params import (
     CableLibraryEntry,
     DistributionSynthParams,
 )
 
 
-class SchweetzerFeederGenerator:
+class SchweitzerFeederGenerator:
     """Generate a single MV radial distribution feeder.
 
     Parameters
@@ -58,7 +61,8 @@ class SchweetzerFeederGenerator:
         v_nom_kv: float = 10.0,
         assign_cable_types: bool = True,
         assign_cable_lengths: bool = True,
-    ) -> nx.Graph:
+        match_totals: bool = True,
+    ) -> DistributionGrid:
         """Generate a complete MV distribution feeder.
 
         Parameters
@@ -69,6 +73,7 @@ class SchweetzerFeederGenerator:
             Total real-power load (MW) to be distributed across load buses.
         total_gen_mw : float, optional
             Total real-power generation/injection (MW). Default 0.
+            Generation is stored as negative ``P_mw`` on injection nodes.
         v_nom_kv : float, optional
             Nominal MV voltage in kV. Default 10.
         assign_cable_types : bool, optional
@@ -76,16 +81,24 @@ class SchweetzerFeederGenerator:
         assign_cable_lengths : bool, optional
             Whether to run Step 5 (cable length and impedance assignment).
             Default True.
+        match_totals : bool, optional
+            If ``True`` (default), the sampled per-node shares are
+            rescaled so the feeder's load and generation add up to
+            exactly *total_load_mw* and *total_gen_mw*.  With ``False``
+            the shares are used as sampled, which reproduces releases
+            up to 0.1.1; the load total then overshoots the request,
+            more so for larger feeders (median about 1.7x at 200 nodes
+            with the default parameters).
 
         Returns
         -------
-        nx.Graph
+        DistributionGrid
             Annotated graph with node attributes (``h``, ``P_mw``, ``Q_mvar``,
             ``pf``, ``node_type``) and, when enabled, edge attributes
             (``cable_type``, ``length_km``, ``r_ohm``, ``x_ohm``,
             ``max_i_ka``, ``I_est_ka``).
         """
-        G = nx.Graph()
+        G = DistributionGrid()
 
         # Step 1: generate nodes with hop distances and power factors
         self._generate_nodes(G, n_nodes)
@@ -94,7 +107,7 @@ class SchweetzerFeederGenerator:
         self._connect_nodes(G)
 
         # Step 3: assign node properties (load / generation / intermediate)
-        self._assign_node_properties(G, total_load_mw, total_gen_mw)
+        self._assign_node_properties(G, total_load_mw, total_gen_mw, match_totals)
 
         # Step 4: assign cable types (optional)
         if assign_cable_types:
@@ -237,7 +250,11 @@ class SchweetzerFeederGenerator:
     # ------------------------------------------------------------------
 
     def _assign_node_properties(
-        self, G: nx.Graph, total_load_mw: float, total_gen_mw: float
+        self,
+        G: nx.Graph,
+        total_load_mw: float,
+        total_gen_mw: float,
+        match_totals: bool = True,
     ) -> None:
         """Assign intermediate / injection / load node types and powers."""
         nodes = list(G.nodes)
@@ -254,10 +271,10 @@ class SchweetzerFeederGenerator:
 
         # 3b: Injection (generation) nodes
         if total_gen_mw > 0:
-            self._assign_injection(G, total_gen_mw)
+            self._assign_injection(G, total_gen_mw, match_totals)
 
         # 3c: Load (consumption) nodes
-        self._assign_load(G, total_load_mw)
+        self._assign_load(G, total_load_mw, match_totals)
 
     def _assign_intermediate(self, G: nx.Graph) -> None:
         """Mark a fraction of nodes as intermediate (zero load)."""
@@ -296,7 +313,9 @@ class SchweetzerFeederGenerator:
             G.nodes[chosen]["node_type"] = "intermediate"
             available.remove(chosen)
 
-    def _assign_injection(self, G: nx.Graph, total_gen_mw: float) -> None:
+    def _assign_injection(
+        self, G: nx.Graph, total_gen_mw: float, match_totals: bool = True
+    ) -> None:
         """Assign power injection to a fraction of nodes."""
         p = self.params
         n_total = G.number_of_nodes()
@@ -340,17 +359,40 @@ class SchweetzerFeederGenerator:
         if n_inj_actual == 0:
             return
 
+        # Each node's share of the total is the uniform share 1/N plus a
+        # sampled deviation, redrawn until the share is positive.
+        shares = []
         for n in injection_nodes:
             while True:
                 eps = self.rng.normal(nd.mu, nd.sigma)
                 if 1.0 / n_inj_actual + eps > 0:
                     break
+            shares.append(1.0 / n_inj_actual + eps)
+
+        scale = self._share_scale(shares, match_totals)
+        for n, share in zip(injection_nodes, shares):
             pf = G.nodes[n]["pf"]
-            P = -total_gen_mw * (1.0 / n_inj_actual + eps)
+            P = -total_gen_mw * share * scale
             G.nodes[n]["P_mw"] = P
             G.nodes[n]["Q_mvar"] = P * math.tan(math.acos(pf))
 
-    def _assign_load(self, G: nx.Graph, total_load_mw: float) -> None:
+    @staticmethod
+    def _share_scale(shares: List[float], match_totals: bool) -> float:
+        """Factor that makes the sampled shares sum to one.
+
+        Redrawing negative shares shifts their mean above 1/N, so the raw
+        shares add up to more than one and the feeder would exceed the
+        requested total.  Dividing by their sum restores the total while
+        keeping the relative spread between nodes.
+        """
+        total = sum(shares)
+        if not match_totals or total <= 0:
+            return 1.0
+        return 1.0 / total
+
+    def _assign_load(
+        self, G: nx.Graph, total_load_mw: float, match_totals: bool = True
+    ) -> None:
         """Assign positive load to all remaining (non-intermediate, non-inj) nodes."""
         p = self.params
         load_nodes = [
@@ -362,6 +404,7 @@ class SchweetzerFeederGenerator:
             return
 
         tls = p.load_deviation
+        shares = []
         for n in load_nodes:
             while True:
                 eps = stats.t.rvs(
@@ -370,8 +413,12 @@ class SchweetzerFeederGenerator:
                 )
                 if 1.0 / n_load + eps > 0:
                     break
+            shares.append(1.0 / n_load + eps)
+
+        scale = self._share_scale(shares, match_totals)
+        for n, share in zip(load_nodes, shares):
             pf = G.nodes[n]["pf"]
-            P = total_load_mw * (1.0 / n_load + eps)
+            P = total_load_mw * share * scale
             G.nodes[n]["P_mw"] = P
             G.nodes[n]["Q_mvar"] = P * math.tan(math.acos(pf))
 
@@ -510,3 +557,20 @@ class SchweetzerFeederGenerator:
             x_per_km = G.edges[u, v].get("x_per_km", 0.0)
             G.edges[u, v]["r_ohm"] = r_per_km * raw
             G.edges[u, v]["x_ohm"] = x_per_km * raw
+
+
+class SchweetzerFeederGenerator(SchweitzerFeederGenerator):
+    """Deprecated misspelling of :class:`SchweitzerFeederGenerator`.
+
+    Kept so existing code keeps working; it will be removed in a future
+    release.
+    """
+
+    def __init__(self, *args, **kwargs):
+        warnings.warn(
+            "SchweetzerFeederGenerator is a misspelling and will be removed "
+            "in a future release; use SchweitzerFeederGenerator instead.",
+            DeprecationWarning,
+            stacklevel=2,
+        )
+        super().__init__(*args, **kwargs)

@@ -6,10 +6,10 @@ from inspect import getsourcefile
 # Point Sphinx to the source code so it can read docstrings
 sys.path.insert(0, os.path.abspath('../'))
 
-project = 'PowerGridSynth'
-copyright = '2025-2026, PowerGridSynth Developers'
-author = 'PowerGridSynth Developers'
-release = '0.1.1'
+project = 'GridStudio'
+copyright = '2025-2026, GridStudio Developers'
+author = 'GridStudio Developers'
+release = '0.2.0'
 
 
 # -- General configuration ---------------------------------------------------
@@ -92,8 +92,8 @@ html_theme_options = {
 
 html_context = {
     'display_github': True,
-    'github_user': 'cookbook-ms',
-    'github_repo': 'Chung_Lu_Chain-synthesizer',
+    'github_user': 'mshyang',
+    'github_repo': 'GridStudio',
     'github_version': 'main',
     'conf_py_path': '/docs/',
 }

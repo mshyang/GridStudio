@@ -384,6 +384,17 @@ class TransmissionLineAllocator:
         
         if m_lines == 0: return {}
 
+        # Line flows come from a DC power flow on the dispatched grid, so
+        # generation and load must be on the graph already.  Without them
+        # every flow is zero and the capacities are meaningless.
+        if not any("pg" in d or "pl" in d for _, d in self.graph.nodes(data=True)):
+            raise ValueError(
+                "TransmissionLineAllocator needs generation ('pg') and load "
+                "('pl') node attributes, but no node of the graph has either. "
+                "Run LoadAllocator(graph).allocate() and "
+                "GenerationDispatcher(graph).dispatch() on this graph first."
+            )
+
         # 1. Initial Impedance (Zpr)
         # LogNormal distribution
         zpr_pars = self.stats.get('Zpr_pars', [-2.38, 1.99, 1.99])

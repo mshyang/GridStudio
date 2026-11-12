@@ -1,17 +1,20 @@
 """
-PowerGridSynth Package
-======================
+GridStudio
+==========
 
-The main package for PowerGridSynth. 
+Synthetic power grid generation.  The import name is ``powergrid_synth``.
 
-This package contains submodules for generating, analyzing, and exporting 
+This package contains submodules for generating, analyzing, and exporting
 synthetic power grids, organized into three subpackages:
 
 - ``core``: shared utilities (analysis, comparison, visualization, etc.)
 - ``transmission``: CLC-based transmission grid synthesis pipeline
 - ``distribution``: Schweitzer-based distribution feeder synthesis pipeline
 """
+from ._extras import EXPORT_INSTALL_HINT as _EXPORT_INSTALL_HINT
+
 # --- Core (shared) ----------------------------------------------------------
+from .core._logging import set_verbosity
 from .core.grid_graph import PowerGridGraph, TransmissionGrid, DistributionGrid
 from .core.analysis import GridAnalyzer
 from .core.comparison import GraphComparator
@@ -82,7 +85,7 @@ def __getattr__(name):
             pkg = _EXTRA_DEPS.get(name, "the required optional package")
             raise ImportError(
                 f"{name!r} requires {pkg}. "
-                f"Install it with: pip install powergrid_synth[export]"
+                f"Install it with: {_EXPORT_INSTALL_HINT}"
             ) from exc
 
     raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
@@ -105,6 +108,7 @@ __all__ = [
     "DistributionGrid",
     "HierarchicalAnalyzer",
     "extract_topology_params_from_graph",
+    "set_verbosity",
     # Optional (lazy-loaded, require pandapower / pypowsybl)
     "synthesize",
     "synthesize_distribution",
@@ -116,4 +120,4 @@ __all__ = [
     "load_grid",
 ]
 
-__version__ = "0.1.1"
+__version__ = "0.2.0"

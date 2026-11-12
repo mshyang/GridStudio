@@ -19,51 +19,49 @@ control over individual pipeline stages.
 
    * - Notebook
      - Open in Colab
-   * - :doc:`High-Level Synthesis <Synthesize.nblink>`
+   * - :doc:`High-Level Synthesis <Synthesize>`
      - (recommended starting point)
-   * - :doc:`Synthesis with pypowsybl <SynthesizePypowsybl.nblink>`
+   * - :doc:`Synthesis with pypowsybl <SynthesizePypowsybl>`
      -
-   * - :doc:`Topology Generation <TopologyGeneration.nblink>`
+   * - :doc:`Topology Generation <TopologyGeneration>`
      - |colab_topo|
-   * - :doc:`Bus Type Assignment <BusTypeAssignment.nblink>`
+   * - :doc:`Bus Type Assignment <BusTypeAssignment>`
      - |colab_bus|
-   * - :doc:`Generation and Load Settings <GenLoadSettings.nblink>`
+   * - :doc:`Generation and Load Settings <GenLoadSettings>`
      - |colab_gen|
-   * - :doc:`IEEE Test <IEEETest.nblink>`
+   * - :doc:`IEEE Test <IEEETest>`
      - |colab_ieee|
-   * - :doc:`PEGASE 9241 Test <Pegase9241Test.nblink>`
+   * - :doc:`PEGASE 9241 Test <Pegase9241Test>`
      - |colab_pegase|
-   * - :doc:`RTE 7000 Test <RTE7000Test.nblink>`
+   * - :doc:`RTE 7000 Test <RTE7000Test>`
      - |colab_rte7k|
 
 
 
 .. |colab_topo| image:: https://colab.research.google.com/assets/colab-badge.svg
-   :target: https://colab.research.google.com/github/cookbook-ms/Chung_Lu_Chain-synthesizer/blob/main/examples/colab/TopologyGeneration_colab.ipynb
+   :target: https://colab.research.google.com/github/mshyang/GridStudio/blob/main/examples/colab/TopologyGeneration_colab.ipynb
 
 .. |colab_bus| image:: https://colab.research.google.com/assets/colab-badge.svg
-   :target: https://colab.research.google.com/github/cookbook-ms/Chung_Lu_Chain-synthesizer/blob/main/examples/colab/BusTypeAssignment_colab.ipynb
+   :target: https://colab.research.google.com/github/mshyang/GridStudio/blob/main/examples/colab/BusTypeAssignment_colab.ipynb
 
 .. |colab_gen| image:: https://colab.research.google.com/assets/colab-badge.svg
-   :target: https://colab.research.google.com/github/cookbook-ms/Chung_Lu_Chain-synthesizer/blob/main/examples/colab/GenLoadSettings_colab.ipynb
+   :target: https://colab.research.google.com/github/mshyang/GridStudio/blob/main/examples/colab/GenLoadSettings_colab.ipynb
 
 .. |colab_ieee| image:: https://colab.research.google.com/assets/colab-badge.svg
-   :target: https://colab.research.google.com/github/cookbook-ms/Chung_Lu_Chain-synthesizer/blob/main/examples/colab/ieee_test_colab.ipynb
+   :target: https://colab.research.google.com/github/mshyang/GridStudio/blob/main/examples/colab/ieee_test_colab.ipynb
 
 .. |colab_pegase| image:: https://colab.research.google.com/assets/colab-badge.svg
-   :target: https://colab.research.google.com/github/cookbook-ms/Chung_Lu_Chain-synthesizer/blob/main/examples/colab/pegase9241_test_colab.ipynb
+   :target: https://colab.research.google.com/github/mshyang/GridStudio/blob/main/examples/colab/pegase9241_test_colab.ipynb
 
 .. |colab_rte7k| image:: https://colab.research.google.com/assets/colab-badge.svg
-   :target: https://colab.research.google.com/github/cookbook-ms/Chung_Lu_Chain-synthesizer/blob/main/examples/colab/rte7k_from_source_file_colab.ipynb
+   :target: https://colab.research.google.com/github/mshyang/GridStudio/blob/main/examples/colab/rte7k_from_source_file_colab.ipynb
 
 Here is a brief example showing how to configure the user input, and then generate, and visualize a synthetic power grid.
 
 .. code-block:: python
    :linenos:
 
-    from powergrid_synth.generator import PowerGridGenerator
-    from powergrid_synth.input_configurator import InputConfigurator
-    from powergrid_synth.visualization import GridVisualizer
+    from powergrid_synth import PowerGridGenerator, InputConfigurator, GridVisualizer
 
     # 1. Configuration
     # Define the voltage levels (Node count, Avg Degree, Diameter, Distribution Type)
@@ -100,11 +98,11 @@ Distribution Grid Synthesis
 
    * - Notebook
      - Description
-   * - :doc:`Distribution Feeder Synthesis <DistributionSynth.nblink>`
+   * - :doc:`Distribution Feeder Synthesis <DistributionSynth>`
      - Schweitzer algorithm with default/custom parameters
-   * - :doc:`Distribution Synthesis from Reference Grid <DistributionSynthFromRef.nblink>`
+   * - :doc:`Distribution Synthesis from Reference Grid <DistributionSynthFromRef>`
      - Fit parameters from a pandapower network
-   * - :doc:`Distribution Synthesis with pypowsybl <DistributionSynthPypowsybl.nblink>`
+   * - :doc:`Distribution Synthesis with pypowsybl <DistributionSynthPypowsybl>`
      - Load CIGRE LV via CGMES, run full pipeline + one-liner
 
 

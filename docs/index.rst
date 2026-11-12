@@ -1,12 +1,14 @@
-PowerGridSynth
-==============
+GridStudio
+==========
 
-**PowerGridSynth** is an open-source Python package for generating realistic **synthetic power grids** at both the transmission and distribution level.
+**GridStudio** is an open-source Python package for generating realistic **synthetic power grids** at both the transmission and distribution level.
 
 - **Transmission grids** are synthesized using a `Chung-Lu-Chain (CLC) <https://arxiv.org/abs/1711.11098>`_ graph model that reproduces prescribed degree distributions and diameters across multiple voltage levels, then layers on bus-type assignment, generation/load capacity allocation (active *and* reactive power), generation dispatch, and transmission-line impedance/capacity assignment drawn from empirical statistics of real grids (NYISO, WECC).
-- **Distribution feeders** are synthesized using the algorithm of `Schweitzer et al. (2017) <https://ieeexplore.ieee.org/document/7895177>`_, producing radial MV/LV tree graphs with realistic cable types, lengths, and load/generation profiles.
+- **Distribution feeders** are synthesized using the algorithm of `Schweitzer et al. (2017) <https://doi.org/10.1109/JETCAS.2017.2682934>`_, producing radial MV/LV tree graphs with realistic cable types, lengths, and load/generation profiles.
 
-Synthesised grids can be **exported to 12+ industry-standard formats** via `pandapower <https://www.pandapower.org/>`_ and `pypowsybl <https://pypowsybl.readthedocs.io/>`_ and validated with **DC and AC power-flow solvers** from both libraries.
+The Python package is called ``powergrid_synth``, the project's earlier name; install and import it under that name (see :doc:`README`).
+
+Synthesised grids can be **exported to 11 standard formats** via `pandapower <https://www.pandapower.org/>`_ and `pypowsybl <https://pypowsybl.readthedocs.io/>`_ and validated with **DC and AC power-flow solvers** from both libraries.
 
 The goal of the project is to provide synthetic yet realistic power grids for grid modeling, simulation and analysis, with the ultimate goal of building **Foundation Models** for power grids. It is part of `LF Energy <https://lfenergy.org>`_, a Linux Foundation focused on the energy sector. This project is supported by `AI-EFFECT <https://ai-effect.eu/>`_ (Artificial Intelligence Experimentation Facility For the Energy Sector).
 
@@ -77,7 +79,7 @@ The high-level ``synthesize()`` function runs the entire CLC transmission pipeli
        export_formats=["json", "matpower"],
    )
 
-See :doc:`examples/Synthesize.nblink` for a full walkthrough.
+See :doc:`examples/Synthesize` for a full walkthrough.
 
 Step-by-Step Usage
 ~~~~~~~~~~~~~~~~~~
@@ -112,14 +114,19 @@ For fine-grained control over individual pipeline stages:
        degrees_by_level=params['degrees_by_level'],
        diameters_by_level=params['diameters_by_level'],
        transformer_degrees=params['transformer_degrees'],
+       keep_lcc=True,   # drop disconnected fragments
    )
 
-   # 3. Assign bus types, generation/load, dispatch, and line parameters
-   BusTypeAllocator(grid).allocate()
-   CapacityAllocator(grid).allocate()
-   LoadAllocator(grid).allocate()
-   GenerationDispatcher(grid).dispatch()
-   TransmissionLineAllocator(grid).allocate()
+   # 3. Assign bus types, generation/load, dispatch, and line parameters.
+   #    Run the stages in this order: each one stores its result on the
+   #    graph (and returns it), and the next one reads it from there.
+   BusTypeAllocator(grid).allocate()            # writes bus_type
+   CapacityAllocator(grid).allocate()           # writes pg_max
+   loads = LoadAllocator(grid)
+   loads.allocate()                             # writes pl
+   loads.allocate_reactive()                    # writes ql
+   GenerationDispatcher(grid).dispatch()        # writes pg
+   TransmissionLineAllocator(grid).allocate()   # writes r, x, z, capacity
 
    # 4. Visualize
    GridVisualizer().plot_grid(grid, layout='yifan_hu', title="Synthetic Grid")
@@ -160,7 +167,7 @@ The high-level ``synthesize_distribution()`` function generates realistic radial
        seed=7,
    )
 
-See :doc:`examples/DistributionSynth.nblink` and :doc:`examples/DistributionSynthFromRef.nblink` for detailed walkthroughs.
+See :doc:`examples/DistributionSynth` and :doc:`examples/DistributionSynthFromRef` for detailed walkthroughs.
 
 
 Supported Data Formats & Power-Flow Solvers
@@ -182,7 +189,7 @@ Synthetic grids live as **NetworkX graphs** internally and can be converted / ex
      - JSON, Excel, SQLite, Pickle
      - ``to_json()``, ``to_excel()``, ``to_sqlite()``, ``to_pickle()``
    * - pypowsybl
-     - **CGMES, XIIDM, MATPOWER, PSS/E**, UCTE, AMPL, BIIDM, JIIDM
+     - **CGMES, XIIDM, MATPOWER, PSS/E**, AMPL, BIIDM, JIIDM
      - ``to_cgmes()``, ``to_matpower()``, ``to_psse()``, ``to_pypowsybl(format=...)``
 
 **Conversion chain**::

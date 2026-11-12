@@ -510,7 +510,7 @@ direct conversion from any pypowsybl-supported file format to a NetworkX graph
 compatible with the synthesis pipeline.
 
 The fitted parameters can be fed directly to
-:class:`~powergrid_synth.distribution.SchweetzerFeederGenerator` for synthesis.
+:class:`~powergrid_synth.distribution.SchweitzerFeederGenerator` for synthesis.
 See the ``DistributionSynthFromRef`` example notebook for a complete workflow.
 
 .. bibliography::

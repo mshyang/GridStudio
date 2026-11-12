@@ -12,6 +12,8 @@ import networkx as nx
 import math
 import random
 from typing import List, Dict, Tuple, Optional
+from ..core._logging import logger
+from ..core._graph_utils import store_node_attribute
 
 
 class BusTypeAllocator:
@@ -404,7 +406,8 @@ class BusTypeAllocator:
         w_star = (d_param * std_w) + mean_w
         return w_star, std_w
 
-    def allocate(self, max_iter: int = 100, population_size: int = 20) -> Dict[int, str]:
+    def allocate(self, max_iter: int = 100, population_size: int = 20,
+                 update_graph: bool = True) -> Dict[int, str]:
         r"""
         Run the AIS optimization to find a bus type assignment.
 
@@ -435,6 +438,10 @@ class BusTypeAllocator:
             Maximum number of AIS iterations (default 100).
         population_size : int, optional
             Number of individuals surviving each generation (default 20).
+        update_graph : bool, optional
+            If ``True`` (default), store the result on the graph as the
+            ``'bus_type'`` node attribute, which the later pipeline stages
+            read.  Pass ``False`` to only get the mapping back.
 
         Returns
         -------
@@ -442,11 +449,11 @@ class BusTypeAllocator:
             Mapping from node ID to bus type label
             (``'Gen'``, ``'Load'``, or ``'Conn'``).
         """
-        print(f"Starting Bus Type Allocation (N={self.n_nodes}, M={self.n_edges})...")
+        logger.debug(f"Starting Bus Type Allocation (N={self.n_nodes}, M={self.n_edges})...")
         
         # 1. Estimate Target W* and Standard Deviation
         w_star, std_w = self._estimate_w_star()
-        print(f"  Target Entropy Score (W*): {w_star:.4f}, Std Dev: {std_w:.4f}")
+        logger.debug(f"  Target Entropy Score (W*): {w_star:.4f}, Std Dev: {std_w:.4f}")
         
         # Determine Convergence Criteria (Logic from MATLAB)
         if self.n_nodes < 50:
@@ -484,11 +491,11 @@ class BusTypeAllocator:
             
             # Check Convergence
             if best_error < criteria:
-                print(f"  Converged at iteration {it}. Error: {best_error:.6f} < Criteria: {criteria:.6f}")
+                logger.debug(f"  Converged at iteration {it}. Error: {best_error:.6f} < Criteria: {criteria:.6f}")
                 break
             
             if it % 10 == 0:
-                print(f"  Iter {it}: Best Error = {best_error:.6f}")
+                logger.debug(f"  Iter {it}: Best Error = {best_error:.6f}")
 
             # B. Clonal Selection
             # Select top solutions to clone. 
@@ -568,7 +575,10 @@ class BusTypeAllocator:
         for i, type_code in enumerate(best_solution):
             node_id = self.idx_to_node[i]
             bus_types[int(node_id)] = type_labels[type_code]
-            
+
+        if update_graph:
+            store_node_attribute(self.graph, bus_types, "bus_type")
+
         return bus_types
 
     def plot_entropy_pdf(self, figsize: Tuple[int, int] = (10, 6)):
@@ -588,11 +598,11 @@ class BusTypeAllocator:
             import matplotlib.pyplot as plt
             from scipy.stats import norm
         except ImportError:
-            print("Matplotlib or Scipy not installed. Cannot plot PDF.")
+            logger.warning("Matplotlib or Scipy not installed. Cannot plot PDF.")
             return
 
         if not hasattr(self, 'w_samples') or not self.w_samples:
-            print("No entropy samples available. Please run allocate() first.")
+            logger.warning("No entropy samples available. Please run allocate() first.")
             return
 
         plt.figure(figsize=figsize)

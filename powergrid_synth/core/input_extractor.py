@@ -8,6 +8,7 @@ This module extracts the topology parameters from realistic grids topology, acti
 
 import networkx as nx
 from typing import Dict, List, Tuple
+from ._logging import logger
 
 def extract_topology_params_from_graph(G: nx.Graph) -> Dict:
     r"""
@@ -36,7 +37,7 @@ def extract_topology_params_from_graph(G: nx.Graph) -> Dict:
             ``{(i, j): (deg_i_to_j, deg_j_to_i)}`` for each pair of voltage
             levels that has at least one transformer edge.
     """
-    print("Extracting topology parameters...")
+    logger.debug("Extracting topology parameters...")
     
     # Get sorted unique voltage levels present in the graph
     # We use a set comprehension to handle missing attributes gracefully if needed

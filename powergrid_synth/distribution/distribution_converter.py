@@ -10,6 +10,8 @@ from typing import Any, Optional
 import networkx as nx
 import numpy as np
 
+from .._extras import EXPORT_INSTALL_HINT
+
 
 def pandapower_to_feeders(net: Any) -> list[nx.Graph]:
     """Convert a pandapower network to a list of Schweitzer-format feeder graphs.
@@ -17,7 +19,7 @@ def pandapower_to_feeders(net: Any) -> list[nx.Graph]:
     Each connected component with at least three nodes is returned as a
     separate graph annotated with the attributes expected by
     :func:`~powergrid_synth.distribution.fit_params_from_feeders` and
-    :class:`~powergrid_synth.distribution.SchweetzerFeederGenerator`:
+    :class:`~powergrid_synth.distribution.SchweitzerFeederGenerator`:
 
     * **Node attributes**: ``h`` (hop distance from root), ``P_mw``
       (positive = load, negative = generation), ``node_type``
@@ -171,7 +173,7 @@ def pypowsybl_to_feeders(network: Any) -> list[nx.Graph]:
     It extracts buses, lines, two-winding transformers, loads, and
     generators from the pypowsybl Network and builds annotated feeder
     graphs suitable for :func:`~powergrid_synth.distribution.fit_params_from_feeders`
-    and :class:`~powergrid_synth.distribution.SchweetzerFeederGenerator`.
+    and :class:`~powergrid_synth.distribution.SchweitzerFeederGenerator`.
 
     Parameters
     ----------
@@ -189,7 +191,7 @@ def pypowsybl_to_feeders(network: Any) -> list[nx.Graph]:
     except ImportError as exc:
         raise ImportError(
             "pypowsybl is required for pypowsybl_to_feeders. "
-            "Install it with: pip install powergrid_synth[export]"
+            f"Install it with: {EXPORT_INSTALL_HINT}"
         ) from exc
 
     G = nx.Graph()

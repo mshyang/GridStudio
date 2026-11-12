@@ -177,8 +177,8 @@ class TestDistributionGrid:
             assert "length_km" in d
 
     def test_from_generated_feeder(self):
-        from powergrid_synth.distribution import SchweetzerFeederGenerator
-        gen = SchweetzerFeederGenerator(seed=42)
+        from powergrid_synth.distribution import SchweitzerFeederGenerator
+        gen = SchweitzerFeederGenerator(seed=42)
         G = gen.generate_feeder(n_nodes=20, total_load_mw=3.0)
         dg = DistributionGrid.from_nx(G)
         assert isinstance(dg, DistributionGrid)

@@ -21,7 +21,7 @@ Two operation modes are supported:
 
 Example — Mode I (reference-based, pandapower)::
 
-    from powergrid_synth.synthesize import synthesize
+    from powergrid_synth import synthesize
 
     synthesize(
         mode="reference",
@@ -53,7 +53,7 @@ Example — Mode I (reference-based, file path)::
 
 Example — Mode II (fully synthetic)::
 
-    from powergrid_synth.synthesize import synthesize
+    from powergrid_synth import synthesize
 
     synthesize(
         mode="synthetic",
@@ -74,6 +74,7 @@ Example — Mode II (fully synthetic)::
 
 from __future__ import annotations
 
+from .._extras import EXPORT_INSTALL_HINT
 import os
 from typing import Dict, List, Optional, Sequence, Tuple, Union
 
@@ -84,6 +85,7 @@ from .capacity_allocator import CapacityAllocator
 from .generation_dispatcher import GenerationDispatcher
 from .generator import PowerGridGenerator
 from .input_configurator import InputConfigurator
+from ..core._logging import logger, verbosity
 from ..core.input_extractor import extract_topology_params_from_graph
 from .load_allocator import LoadAllocator
 from .transmission import TransmissionLineAllocator
@@ -95,7 +97,7 @@ def _get_pandapower_cases() -> Dict[str, object]:
     except ImportError as exc:
         raise ImportError(
             "synthesize() in reference mode requires pandapower. "
-            "Install it with: pip install powergrid_synth[export]"
+            f"Install it with: {EXPORT_INSTALL_HINT}"
         ) from exc
 
     return {name: getattr(pn, name) for name in dir(pn) if name.startswith("case")}
@@ -154,7 +156,8 @@ def synthesize(
     base_kv_map: Optional[Dict[int, float]] = None,
     output_dir: str = "output",
     output_name: str = "synthetic_grid",
-    export_formats: Sequence[str] = ("json",),
+    export_formats: Optional[Sequence[str]] = ("json",),
+    verbose: bool = True,
 ) -> nx.Graph:
     """Run the full CLC synthesis pipeline and export the result.
 
@@ -217,23 +220,89 @@ def synthesize(
         Directory for exported files (created if needed).
     output_name : str
         Base filename (without extension) for exported files.
-    export_formats : sequence of str
+    export_formats : sequence of str, optional
         One or more format names to export.  Supported:
         ``"json"``, ``"excel"``, ``"sqlite"``, ``"pickle"``,
         ``"xiidm"``, ``"cgmes"``, ``"matpower"``, ``"psse"``.
+        Pass ``None`` or an empty list to skip the export and only get
+        the graph back.  Existing files with the same name are
+        overwritten, so give each grid its own *output_name*.
+    verbose : bool
+        If ``True`` (default), print one progress line per pipeline
+        stage.  ``False`` prints warnings only.  For finer control see
+        :func:`powergrid_synth.set_verbosity`.
 
     Returns
     -------
-    nx.Graph
-        The fully parameterised synthetic grid (a
-        :class:`~powergrid_synth.grid_graph.PowerGridGraph`).
+    PowerGridGraph
+        The fully parameterised synthetic grid, a
+        :class:`~powergrid_synth.core.grid_graph.PowerGridGraph`
+        (a :class:`networkx.Graph` subclass).  Nodes carry
+        ``voltage_level``, ``bus_type`` (``'Gen'`` / ``'Load'`` /
+        ``'Conn'``), ``pg_max`` and ``pg`` (generators, MW), ``pl`` and
+        ``ql`` (loads, MW / Mvar).  Edges carry ``type`` (``'line'`` /
+        ``'transformer'``), ``r``, ``x``, ``z`` (p.u.) and ``capacity``
+        (MW).
+
+    Notes
+    -----
+    The number of buses is approximate.  The CLC model pads each level's
+    degree sequence and, with ``keep_lcc=True``, only the largest connected
+    component is kept, so the returned grid can be somewhat smaller or
+    larger than requested (roughly 10 % smaller for a 500-bus synthetic
+    spec, a few buses larger for an IEEE-118 clone).  Check
+    ``grid.number_of_nodes()`` rather than assuming the requested size.
 
     Raises
     ------
     ValueError
-        If *mode* is not ``"reference"`` or ``"synthetic"``, or if
-        required arguments for the chosen mode are missing.
+        If *mode* is not ``"reference"`` or ``"synthetic"``, if
+        required arguments for the chosen mode are missing, or if
+        *export_formats* contains an unknown format name.
     """
+    with verbosity(logger.level if verbose else "warning"):
+        return _synthesize(
+            mode=mode,
+            reference_case=reference_case,
+            reference_net=reference_net,
+            reference_file=reference_file,
+            level_specs=level_specs,
+            connection_specs=connection_specs,
+            seed=seed,
+            keep_lcc=keep_lcc,
+            entropy_model=entropy_model,
+            bus_type_ratio=bus_type_ratio,
+            ref_sys_id=ref_sys_id,
+            loading_level=loading_level,
+            refine_topology=refine_topology,
+            base_kv_map=base_kv_map,
+            output_dir=output_dir,
+            output_name=output_name,
+            export_formats=export_formats,
+        )
+
+
+def _synthesize(
+    *,
+    mode,
+    reference_case,
+    reference_net,
+    reference_file,
+    level_specs,
+    connection_specs,
+    seed,
+    keep_lcc,
+    entropy_model,
+    bus_type_ratio,
+    ref_sys_id,
+    loading_level,
+    refine_topology,
+    base_kv_map,
+    output_dir,
+    output_name,
+    export_formats,
+) -> nx.Graph:
+    """Implementation of :func:`synthesize` (arguments already documented there)."""
     # ------------------------------------------------------------------
     # 0. Validate inputs
     # ------------------------------------------------------------------
@@ -256,6 +325,22 @@ def synthesize(
                 "connection_specs."
             )
 
+    # Check the export formats now rather than after the whole pipeline ran.
+    if isinstance(export_formats, str):
+        export_formats = [export_formats]
+    export_formats = [f.lower().strip() for f in (export_formats or [])]
+    unknown = [f for f in export_formats if f not in _EXPORT_DISPATCH]
+    if unknown:
+        raise ValueError(
+            f"Unknown export format(s) {unknown}. "
+            f"Available: {sorted(_EXPORT_DISPATCH)}."
+        )
+    if export_formats:
+        # Exporting goes through pandapower; fail now, not after the
+        # whole pipeline has run.
+        from ..core.data_format_converter import _require_pandapower
+        _require_pandapower()
+
     # ------------------------------------------------------------------
     # 1. Obtain topology parameters
     # ------------------------------------------------------------------
@@ -271,7 +356,7 @@ def synthesize(
         if base_kv_map is None:
             base_kv_map = graph_ref.graph.get("base_kv_map")
 
-        print(
+        logger.info(
             f"[1] Loaded reference grid: "
             f"{graph_ref.number_of_nodes()} nodes, "
             f"{graph_ref.number_of_edges()} edges."
@@ -280,7 +365,7 @@ def synthesize(
     else:  # mode == "synthetic"
         configurator = InputConfigurator(seed=seed)
         params = configurator.create_params(level_specs, connection_specs)
-        print(f"[1] Generated synthetic input parameters for {len(level_specs)} voltage levels.")
+        logger.info(f"[1] Generated synthetic input parameters for {len(level_specs)} voltage levels.")
 
     # ------------------------------------------------------------------
     # 2. Generate topology
@@ -292,7 +377,7 @@ def synthesize(
         transformer_degrees=params["transformer_degrees"],
         keep_lcc=keep_lcc,
     )
-    print(
+    logger.info(
         f"[2] Topology generated: "
         f"{graph.number_of_nodes()} nodes, "
         f"{graph.number_of_edges()} edges."
@@ -307,7 +392,6 @@ def synthesize(
         bus_type_ratio=bus_type_ratio,
     )
     bus_types = allocator.allocate()
-    nx.set_node_attributes(graph, bus_types, name="bus_type")
     _print_bus_types(bus_types)
 
     # ------------------------------------------------------------------
@@ -315,24 +399,21 @@ def synthesize(
     # ------------------------------------------------------------------
     cap_alloc = CapacityAllocator(graph, ref_sys_id=ref_sys_id)
     capacities = cap_alloc.allocate()
-    nx.set_node_attributes(graph, capacities, name="pg_max")
     total_cap = sum(capacities.values())
-    print(f"[4] Generation capacities: total = {total_cap:.1f} MW")
+    logger.info(f"[4] Generation capacities: total = {total_cap:.1f} MW")
 
     # ------------------------------------------------------------------
     # 5. Allocate loads
     # ------------------------------------------------------------------
     load_alloc = LoadAllocator(graph, ref_sys_id=ref_sys_id)
     loads = load_alloc.allocate(loading_level=loading_level)
-    nx.set_node_attributes(graph, loads, name="pl")
-    reactive_loads = load_alloc.allocate_reactive(loads)
-    nx.set_node_attributes(graph, reactive_loads, name="ql")
+    reactive_loads = load_alloc.allocate_reactive()
     total_load = sum(loads.values())
     total_ql = sum(reactive_loads.values())
-    print(
+    logger.info(
         f"[5] Loads allocated: total P = {total_load:.1f} MW, "
         f"Q = {total_ql:.1f} Mvar "
-        f"({total_load / total_cap:.0%} loading)"
+        f"({total_load / total_cap if total_cap else 0:.0%} loading)"
     )
 
     # ------------------------------------------------------------------
@@ -340,9 +421,8 @@ def synthesize(
     # ------------------------------------------------------------------
     dispatcher = GenerationDispatcher(graph, ref_sys_id=ref_sys_id)
     dispatch = dispatcher.dispatch()
-    nx.set_node_attributes(graph, dispatch, name="pg")
     total_gen = sum(dispatch.values())
-    print(
+    logger.info(
         f"[6] Generation dispatched: {total_gen:.1f} MW "
         f"(reserve {total_cap - total_gen:.1f} MW)"
     )
@@ -354,38 +434,39 @@ def synthesize(
     line_caps = trans_alloc.allocate(refine_topology=refine_topology)
     n_lines = len(line_caps)
     avg_cap = sum(line_caps.values()) / n_lines if n_lines else 0
-    print(
+    logger.info(
         f"[7] Transmission lines: {n_lines} lines, "
         f"avg capacity = {avg_cap:.1f} MVA"
     )
 
+    # Keep the voltage mapping with the grid, so converting or exporting it
+    # later gives the same kV values as the export below.
+    if base_kv_map is not None:
+        graph.graph["base_kv_map"] = dict(base_kv_map)
+
     # ------------------------------------------------------------------
     # 8. Export
     # ------------------------------------------------------------------
-    from ..core.exporter import GridExporter
+    if export_formats:
+        from ..core.exporter import GridExporter
 
-    os.makedirs(output_dir, exist_ok=True)
-    exporter = GridExporter(graph, base_kv_map=base_kv_map)
+        os.makedirs(output_dir, exist_ok=True)
+        exporter = GridExporter(graph, base_kv_map=base_kv_map)
+        logger.info(f"[8] Exporting to {output_dir}{os.sep}")
 
-    for fmt in export_formats:
-        fmt_lower = fmt.lower().strip()
-        if fmt_lower not in _EXPORT_DISPATCH:
-            print(f"  [!] Unknown format {fmt!r}, skipping. "
-                  f"Available: {sorted(_EXPORT_DISPATCH)}")
-            continue
+        for fmt in export_formats:
+            method_name, default_ext = _EXPORT_DISPATCH[fmt]
+            filepath = os.path.join(output_dir, output_name + default_ext)
+            method = getattr(exporter, method_name)
 
-        method_name, default_ext = _EXPORT_DISPATCH[fmt_lower]
-        filepath = os.path.join(output_dir, output_name + default_ext)
-        method = getattr(exporter, method_name)
+            if fmt == "xiidm":
+                method(filepath, format="XIIDM")
+            else:
+                method(filepath)
+    else:
+        logger.info("[8] No export requested.")
 
-        if fmt_lower == "xiidm":
-            method(filepath, format="XIIDM")
-        else:
-            method(filepath)
-
-        print(f"  -> Exported {fmt_lower}: {filepath}")
-
-    print("[8] Done.")
+    logger.info("Done.")
     return graph
 
 
@@ -457,4 +538,4 @@ def _print_bus_types(bus_types: Dict[int, str]) -> None:
         for t in ("Gen", "Load", "Conn")
         if t in counts
     )
-    print(f"[3] Bus types assigned: {parts}")
+    logger.info(f"[3] Bus types assigned: {parts}")

@@ -11,7 +11,7 @@ from powergrid_synth.distribution import (
     DistributionInputModel,
     DistributionSynthParams,
     FeederInputSample,
-    SchweetzerFeederGenerator,
+    SchweitzerFeederGenerator,
     compare_feeders,
     compute_emergent_properties,
     fit_params_from_feeders,
@@ -26,7 +26,7 @@ from powergrid_synth.distribution import (
 
 @pytest.fixture
 def generator():
-    return SchweetzerFeederGenerator(seed=42)
+    return SchweitzerFeederGenerator(seed=42)
 
 
 @pytest.fixture
@@ -68,7 +68,7 @@ class TestDistributionParams:
 # distribution_synthesis tests
 # ------------------------------------------------------------------
 
-class TestSchweetzerFeederGenerator:
+class TestSchweitzerFeederGenerator:
     def test_creates_correct_node_count(self, generator):
         G = generator.generate_feeder(n_nodes=25, total_load_mw=4.0)
         assert G.number_of_nodes() == 25
@@ -124,8 +124,8 @@ class TestSchweetzerFeederGenerator:
                 assert small_feeder.nodes[n]["P_mw"] == 0.0
 
     def test_reproducible_with_seed(self):
-        g1 = SchweetzerFeederGenerator(seed=99)
-        g2 = SchweetzerFeederGenerator(seed=99)
+        g1 = SchweitzerFeederGenerator(seed=99)
+        g2 = SchweitzerFeederGenerator(seed=99)
         G1 = g1.generate_feeder(20, 3.0)
         G2 = g2.generate_feeder(20, 3.0)
         assert G1.number_of_nodes() == G2.number_of_nodes()
@@ -190,7 +190,7 @@ class TestValidation:
 
     def test_compare_feeders_returns_kl(self, generator):
         G1 = generator.generate_feeder(20, 3.0)
-        gen2 = SchweetzerFeederGenerator(seed=123)
+        gen2 = SchweitzerFeederGenerator(seed=123)
         G2 = gen2.generate_feeder(20, 3.0)
         result = compare_feeders(G1, G2)
         assert "hop_distance_kl" in result

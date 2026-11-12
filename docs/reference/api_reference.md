@@ -74,14 +74,7 @@
 ### Core Classes
 
 ```{eval-rst}
-.. autoclass:: powergrid_synth.distribution.SchweetzerFeederGenerator
-   :members:
-   :undoc-members:
-   :show-inheritance:
-```
-
-```{eval-rst}
-.. autoclass:: powergrid_synth.distribution.FeederParams
+.. autoclass:: powergrid_synth.distribution.SchweitzerFeederGenerator
    :members:
    :undoc-members:
    :show-inheritance:

@@ -20,6 +20,8 @@ import numpy as np
 import networkx as nx
 from typing import List, Dict, Tuple, Optional
 from ..core.reference_data import get_reference_stats
+from ..core._logging import logger
+from ..core._graph_utils import require_node_attribute, store_node_attribute
 
 
 class GenerationDispatcher:
@@ -66,7 +68,7 @@ class GenerationDispatcher:
         try:
             self.stats = get_reference_stats(ref_sys_id)
         except ValueError:
-            print(f"Warning: Invalid ref_sys_id {ref_sys_id}. Defaulting to 1.")
+            logger.warning(f"Warning: Invalid ref_sys_id {ref_sys_id}. Defaulting to 1.")
             self.stats = get_reference_stats(1)
 
         self.alpha_mod = self.stats['Alpha_mod']
@@ -277,7 +279,7 @@ class GenerationDispatcher:
 
         return np.array(final_list) if final_list else np.array([])
 
-    def dispatch(self) -> Dict[int, float]:
+    def dispatch(self, update_graph: bool = True) -> Dict[int, float]:
         r"""Run the full generation dispatch pipeline.
 
         Implements the algorithm of Sadeghian et al. (2018):
@@ -297,18 +299,43 @@ class GenerationDispatcher:
         5. Convert normalised dispatch back to MW:
            :math:`P_{g_i} = \alpha_i \cdot \bar{P}_{g_i}^{\max} \cdot P^{\max}_{g_{\max}}`.
 
+        Parameters
+        ----------
+        update_graph : bool, optional
+            If ``True`` (default), store the result on the graph as the
+            ``'pg'`` node attribute of the generator buses.
+
         Returns
         -------
         dict
             Mapping of generator bus ID to dispatched active power (MW).
+
+        Raises
+        ------
+        ValueError
+            If bus types or generation capacities have not been assigned
+            yet.
         """
+        require_node_attribute(
+            self.graph, "bus_type",
+            needed_by="GenerationDispatcher",
+            set_by="BusTypeAllocator(graph).allocate()",
+        )
         # 1. Prepare Buses into (Id, Gen) and (Id, Load)
         gen_data = []
         for n, d in self.graph.nodes(data=True):
             if d.get('bus_type') == 'Gen':
                 gen_data.append([n, d.get('pg_max', 0.0)])
                 
-        if not gen_data: return {}
+        if not gen_data:
+            if update_graph:
+                store_node_attribute(self.graph, {}, "pg")
+            return {}
+        require_node_attribute(
+            self.graph, "pg_max",
+            needed_by="GenerationDispatcher",
+            set_by="CapacityAllocator(graph).allocate()",
+        )
         gen_arr = np.array(gen_data)
         max_pg = np.max(gen_arr[:, 1])
         if max_pg == 0: max_pg = 1.0
@@ -421,5 +448,8 @@ class GenerationDispatcher:
                 for row in group:
                     gen_mw = row[1] * row[2] * max_pg
                     result[int(row[0])] = gen_mw
-        
+
+        if update_graph:
+            store_node_attribute(self.graph, result, "pg")
+
         return result
